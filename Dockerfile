@@ -1,14 +1,23 @@
-FROM quay.io/quarkus/ubi-quarkus-native-image:21.0.0-java11 as builder
-RUN yum install -y maven
+## Stage 1 : build with maven builder image with native capabilities
+FROM quay.io/quarkus/ubi-quarkus-mandrel-builder-image:jdk-17 AS build
+COPY --chown=quarkus:quarkus mvnw /code/mvnw
+COPY --chown=quarkus:quarkus .mvn /code/.mvn
+COPY --chown=quarkus:quarkus pom.xml /code/
+USER quarkus
+WORKDIR /code
+RUN ./mvnw -B org.apache.maven.plugins:maven-dependency-plugin:3.1.2:go-offline
+COPY src /code/src
+RUN ./mvnw package -Dnative
 
-WORKDIR /project
-COPY . /project
-
-RUN mvn package -Pnative -Dquarkus.native.container-build=true -Dquarkus.container-image.build=true
-
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.4
-
+## Stage 2 : create the docker final image
+FROM quay.io/quarkus/quarkus-micro-image:2.0
 WORKDIR /work/
-COPY --from=builder /project/target/*-runner /work/application
+COPY --from=build /code/target/*-runner /work/application
+
+# set up permissions for user `1001`
+RUN chmod 775 /work /work/application \
+  && chown -R 1001 /work \
+  && chmod -R "g+rwX" /work \
+  && chown -R 1001:root /work
 
 CMD ./application -Dquarkus.http.host=0.0.0.0  -Dquarkus.http.port=${PORT}
