@@ -1,4 +1,5 @@
 FROM quay.io/quarkus/ubi-quarkus-native-image:21.0.0-java11 as builder
+RUN yum install -y maven
 
 WORKDIR /project
 COPY . /project
